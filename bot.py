@@ -27,7 +27,6 @@ from typing import Optional
 
 import telebot
 from telebot import types
-from flask import Flask, jsonify, request
 
 
 # =========================================================
@@ -45,10 +44,6 @@ ADMIN_IDS = {
 }
 
 DB_NAME = os.getenv("DB_PATH", "stars_avto_bot.db").strip() or "stars_avto_bot.db"
-RENDER_EXTERNAL_URL = os.getenv("RENDER_EXTERNAL_URL", "").strip().rstrip("/")
-WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET", "starsbot2026").strip() or "starsbot2026"
-WEBHOOK_PATH = "/webhook"
-
 DEFAULT_STAR_PRICE = 198
 DEFAULT_CARD_NUMBER = "9860 0803 9457 0230"
 DEFAULT_CARD_OWNER = "S/MAHMUDOVA"
@@ -62,7 +57,6 @@ if not ADMIN_IDS:
     raise RuntimeError("ADMIN_IDS Render Environment bo‘limida kiritilmagan.")
 
 bot = telebot.TeleBot(BOT_TOKEN, parse_mode="HTML", threaded=True)
-app = Flask(__name__)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -233,6 +227,11 @@ def init_db():
                 (key, value),
             )
 
+        # Eski bazadagi umumiy SMM xizmatlarini Telegram bo‘limiga ko‘chiramiz.
+        conn.execute(
+            "UPDATE catalog SET category='smm_telegram' WHERE category='smm'"
+        )
+
         count = conn.execute("SELECT COUNT(*) c FROM catalog").fetchone()["c"]
         if count == 0:
             seed_catalog(conn)
@@ -277,10 +276,10 @@ def seed_catalog(conn):
         ("number", "🇺🇸 US raqam", "Telegram uchun virtual raqam.", 5386, 1, 1, 1, 30),
         ("number", "🇷🇺 RU raqam", "Telegram uchun virtual raqam.", 23083, 1, 1, 1, 40),
 
-        ("smm", "👀 Telegram prosmotr", "15 daqiqa ichida qo‘shiladi.", 550, 1000, 100, 1000000, 10),
-        ("smm", "❤️ Telegram reaksiya", "30 daqiqa ichida qo‘shiladi.", 880, 1000, 100, 1000000, 20),
-        ("smm", "👤 Tezkor obunachi", "30 kun kafolatli servis.", 6050, 1000, 100, 1000000, 30),
-        ("smm", "🤖 Bot obunachisi", "Bot referral havolasi uchun.", 4400, 1000, 100, 1000000, 40),
+        ("smm_telegram", "👀 Telegram prosmotr", "15 daqiqa ichida qo‘shiladi.", 550, 1000, 100, 1000000, 10),
+        ("smm_telegram", "❤️ Telegram reaksiya", "30 daqiqa ichida qo‘shiladi.", 880, 1000, 100, 1000000, 20),
+        ("smm_telegram", "👤 Tezkor obunachi", "30 kun kafolatli servis.", 6050, 1000, 100, 1000000, 30),
+        ("smm_telegram", "🤖 Bot obunachisi", "Bot referral havolasi uchun.", 4400, 1000, 100, 1000000, 40),
     ]
 
     for row in rows:
@@ -495,7 +494,10 @@ def catalog_keyboard(category: str):
         )
     for i in range(0, len(buttons), 2):
         kb.row(*buttons[i:i+2])
-    kb.add(types.InlineKeyboardButton("⬅️ Bosh menyu", callback_data="main"))
+    if category.startswith("smm_"):
+        kb.add(types.InlineKeyboardButton("⬅️ SMM bo‘limlari", callback_data="smm_platforms"))
+    else:
+        kb.add(types.InlineKeyboardButton("⬅️ Bosh menyu", callback_data="main"))
     return kb
 
 
@@ -506,7 +508,11 @@ def send_catalog(chat_id: int, category: str):
         "premium": "🌟 <b>Telegram Premium</b>\n\nKerakli muddatni tanlang.",
         "pubg": "🎮 <b>PUBG Mobile UC</b>\n\nUC paketini tanlang.",
         "number": "📱 <b>Virtual raqamlar</b>\n\nDavlatni tanlang.",
-        "smm": "🌐 <b>SMM xizmatlari</b>\n\nKerakli xizmatni tanlang.",
+        "smm_instagram": "📸 <b>Instagram xizmatlari</b>\n\nKerakli xizmatni tanlang.",
+        "smm_telegram": "✈️ <b>Telegram xizmatlari</b>\n\nKerakli xizmatni tanlang.",
+        "smm_youtube": "▶️ <b>YouTube xizmatlari</b>\n\nKerakli xizmatni tanlang.",
+        "smm_tiktok": "🎵 <b>TikTok xizmatlari</b>\n\nKerakli xizmatni tanlang.",
+        "smm_facebook": "📘 <b>Facebook xizmatlari</b>\n\nKerakli xizmatni tanlang.",
     }
     safe_send(
         chat_id,
@@ -584,9 +590,57 @@ def number_menu(message):
     send_catalog(message.chat.id, "number")
 
 
+def smm_platform_keyboard():
+    kb = types.InlineKeyboardMarkup(row_width=2)
+    kb.row(
+        types.InlineKeyboardButton("📸 Instagram", callback_data="smm_cat:smm_instagram"),
+        types.InlineKeyboardButton("✈️ Telegram", callback_data="smm_cat:smm_telegram"),
+    )
+    kb.row(
+        types.InlineKeyboardButton("▶️ YouTube", callback_data="smm_cat:smm_youtube"),
+        types.InlineKeyboardButton("🎵 TikTok", callback_data="smm_cat:smm_tiktok"),
+    )
+    kb.add(
+        types.InlineKeyboardButton("📘 Facebook", callback_data="smm_cat:smm_facebook")
+    )
+    kb.add(types.InlineKeyboardButton("⬅️ Bosh menyu", callback_data="main"))
+    return kb
+
+
+def send_smm_platforms(chat_id: int):
+    safe_send(
+        chat_id,
+        "🌐 <b>SMM xizmatlari</b>\n\nKerakli platformani tanlang.",
+        reply_markup=smm_platform_keyboard(),
+    )
+
+
 @bot.message_handler(func=lambda m: m.text == "🌐 SMM xizmatlari")
 def smm_menu(message):
-    send_catalog(message.chat.id, "smm")
+    send_smm_platforms(message.chat.id)
+
+
+@bot.callback_query_handler(func=lambda c: c.data == "smm_platforms")
+def smm_platforms_callback(call):
+    bot.answer_callback_query(call.id)
+    send_smm_platforms(call.message.chat.id)
+
+
+@bot.callback_query_handler(func=lambda c: c.data.startswith("smm_cat:"))
+def smm_category_callback(call):
+    category = call.data.split(":", 1)[1]
+    allowed = {
+        "smm_instagram",
+        "smm_telegram",
+        "smm_youtube",
+        "smm_tiktok",
+        "smm_facebook",
+    }
+    if category not in allowed:
+        bot.answer_callback_query(call.id, "Bo‘lim topilmadi.", show_alert=True)
+        return
+    bot.answer_callback_query(call.id)
+    send_catalog(call.message.chat.id, category)
 
 
 @bot.message_handler(func=lambda m: m.text == "🎮 PUBG UC olish")
@@ -624,7 +678,11 @@ def choose_item(call):
         "premium": "👤 Premium qaysi profilga ulanadi?\n\nUsername’ni @ bilan yozing.",
         "pubg": "🎮 PUBG Player ID yoki kerakli hisob ma’lumotini yozing.",
         "number": "📱 Raqam uchun buyurtmani tasdiqlashga o‘tamiz.\n\n<code>DAVOM</code> deb yozing.",
-        "smm": "🔗 Kanal, guruh, bot yoki post havolasini yuboring.",
+        "smm_instagram": "🔗 Instagram profil, post yoki video havolasini yuboring.",
+        "smm_telegram": "🔗 Telegram kanal, guruh, bot yoki post havolasini yuboring.",
+        "smm_youtube": "🔗 YouTube kanal yoki video havolasini yuboring.",
+        "smm_tiktok": "🔗 TikTok profil yoki video havolasini yuboring.",
+        "smm_facebook": "🔗 Facebook sahifa, profil yoki post havolasini yuboring.",
     }
 
     bot.answer_callback_query(call.id)
@@ -703,7 +761,7 @@ def receive_target(message):
             safe_send(message.chat.id, "❌ Ma’lumot juda qisqa.")
             return
 
-    if category == "smm":
+    if category.startswith("smm_"):
         set_state(
             message.from_user.id,
             "await_quantity",
@@ -1670,7 +1728,11 @@ def admin_prices(message):
         ("🌟 Premium", "premium"),
         ("🎮 PUBG", "pubg"),
         ("📱 Raqam", "number"),
-        ("🌐 SMM", "smm"),
+        ("📸 Instagram", "smm_instagram"),
+        ("✈️ Telegram", "smm_telegram"),
+        ("▶️ YouTube", "smm_youtube"),
+        ("🎵 TikTok", "smm_tiktok"),
+        ("📘 Facebook", "smm_facebook"),
     ]
     for title, category in categories:
         kb.add(
@@ -1818,7 +1880,10 @@ def admin_add_item_start(call):
         call.message.chat.id,
         "Kategoriya yozing:\n"
         "<code>stars</code>, <code>gift</code>, <code>premium</code>, "
-        "<code>pubg</code>, <code>number</code>, <code>smm</code>",
+        "<code>pubg</code>, <code>number</code>,\n"
+        "<code>smm_instagram</code>, <code>smm_telegram</code>, "
+        "<code>smm_youtube</code>, <code>smm_tiktok</code>, "
+        "<code>smm_facebook</code>",
     )
 
 
@@ -1833,7 +1898,18 @@ def admin_add_item_flow(message):
 
     if name == "admin_add_category":
         category = message.text.strip().lower()
-        if category not in {"stars", "gift", "premium", "pubg", "number", "smm"}:
+        if category not in {
+            "stars",
+            "gift",
+            "premium",
+            "pubg",
+            "number",
+            "smm_instagram",
+            "smm_telegram",
+            "smm_youtube",
+            "smm_tiktok",
+            "smm_facebook",
+        }:
             safe_send(message.chat.id, "Kategoriya noto‘g‘ri.")
             return
         set_state(message.from_user.id, "admin_add_title", category=category)
@@ -2076,77 +2152,31 @@ def fallback(message):
 
 
 # =========================================================
-# ISHGA TUSHIRISH — FLASK WEBHOOK / RENDER
+# ISHGA TUSHIRISH — POLLING
 # =========================================================
 
-@app.route("/", methods=["GET", "HEAD"])
-def health_check():
-    return jsonify({
-        "status": "ok",
-        "service": "stars-avto-bot",
-        "bot": f"@{BOT_USERNAME}" if BOT_USERNAME else "starting",
-    }), 200
-
-
-@app.get("/health")
-def health():
-    return jsonify({"ok": True, "service": "stars-avto-bot"}), 200
-
-
-@app.post(WEBHOOK_PATH)
-def telegram_webhook():
-    # Telegram xato bo‘lsa update'ni qayta-qayta yubormasligi uchun
-    # har doim 200 qaytaramiz; xato Render logida ko‘rinadi.
-    try:
-        if not request.is_json:
-            logger.warning("Webhook JSON bo‘lmagan so‘rov oldi.")
-            return "OK", 200
-
-        update = telebot.types.Update.de_json(request.get_data(as_text=True))
-        bot.process_new_updates([update])
-    except Exception:
-        logger.exception("Webhook update xatosi")
-
-    return "OK", 200
-
-
-def setup_webhook():
+def start_polling():
     global BOT_USERNAME
 
     init_db()
 
+    # Oldin webhook ishlatilgan bo‘lsa, polling bilan to‘qnashmasligi uchun o‘chiriladi.
+    bot.remove_webhook()
+
     me = bot.get_me()
     BOT_USERNAME = me.username or BOT_USERNAME
 
-    if not RENDER_EXTERNAL_URL:
-        raise RuntimeError(
-            "RENDER_EXTERNAL_URL Render Environment bo‘limida kiritilmagan."
-        )
+    logger.info("Bot ishga tushdi: @%s", BOT_USERNAME)
+    logger.info("Ishlash rejimi: polling")
+    logger.info("Adminlar: %s", ", ".join(map(str, ADMIN_IDS)))
 
-    webhook_url = f"{RENDER_EXTERNAL_URL}{WEBHOOK_PATH}"
-
-    # Eski pyTelegramBotAPI versiyalarida parametrlar mos kelmasligi mumkin,
-    # shuning uchun remove_webhook() parametrsiz chaqiriladi.
-    bot.remove_webhook()
-    result = bot.set_webhook(
-        url=webhook_url,
+    bot.infinity_polling(
+        skip_pending=True,
+        timeout=30,
+        long_polling_timeout=30,
         allowed_updates=["message", "callback_query"],
     )
 
-    if not result:
-        raise RuntimeError("Telegram webhook o‘rnatilmadi.")
-
-    info = bot.get_webhook_info()
-    logger.info("Bot ishga tushdi: @%s", BOT_USERNAME)
-    logger.info("Webhook: %s", info.url)
-    logger.info("Webhook xatosi: %s", info.last_error_message or "yo‘q")
-    logger.info("Adminlar: %s", ", ".join(map(str, ADMIN_IDS)))
-
-
-# Gunicorn main:app import qilganda shu yer bajariladi.
-setup_webhook()
-
 
 if __name__ == "__main__":
-    port = int(os.getenv("PORT", "10000"))
-    app.run(host="0.0.0.0", port=port)
+    start_polling()
