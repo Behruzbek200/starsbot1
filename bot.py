@@ -27,6 +27,7 @@ from typing import Optional
 
 import telebot
 from telebot import types
+from flask import Flask, jsonify, request
 
 
 # =========================================================
@@ -44,6 +45,9 @@ ADMIN_IDS = {
 }
 
 DB_NAME = os.getenv("DB_PATH", "stars_avto_bot.db").strip() or "stars_avto_bot.db"
+RENDER_EXTERNAL_URL = os.getenv("RENDER_EXTERNAL_URL", "").strip().rstrip("/")
+WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET", "starsbot2026").strip() or "starsbot2026"
+WEBHOOK_PATH = "/webhook"
 DEFAULT_STAR_PRICE = 198
 DEFAULT_CARD_NUMBER = "9860 0803 9457 0230"
 DEFAULT_CARD_OWNER = "S/MAHMUDOVA"
@@ -57,6 +61,7 @@ if not ADMIN_IDS:
     raise RuntimeError("ADMIN_IDS Render Environment bo‘limida kiritilmagan.")
 
 bot = telebot.TeleBot(BOT_TOKEN, parse_mode="HTML", threaded=True)
+app = Flask(__name__)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -2152,31 +2157,76 @@ def fallback(message):
 
 
 # =========================================================
-# ISHGA TUSHIRISH — POLLING
+# ISHGA TUSHIRISH — FLASK WEBHOOK / RENDER
 # =========================================================
 
-def start_polling():
+@app.route("/", methods=["GET", "HEAD"])
+def health_check():
+    return jsonify({
+        "status": "ok",
+        "service": "stars-avto-bot",
+        "mode": "flask-webhook",
+        "bot": f"@{BOT_USERNAME}" if BOT_USERNAME else "starting",
+    }), 200
+
+
+@app.get("/health")
+def health():
+    return jsonify({"ok": True, "service": "stars-avto-bot", "mode": "webhook"}), 200
+
+
+@app.post(WEBHOOK_PATH)
+def telegram_webhook():
+    try:
+        if not request.is_json:
+            logger.warning("Webhook JSON bo‘lmagan so‘rov oldi.")
+            return "OK", 200
+
+        update = telebot.types.Update.de_json(request.get_data(as_text=True))
+        bot.process_new_updates([update])
+    except Exception:
+        logger.exception("Webhook update xatosi")
+
+    return "OK", 200
+
+
+def setup_webhook():
     global BOT_USERNAME
 
     init_db()
 
-    # Oldin webhook ishlatilgan bo‘lsa, polling bilan to‘qnashmasligi uchun o‘chiriladi.
-    
-
     me = bot.get_me()
     BOT_USERNAME = me.username or BOT_USERNAME
 
-    logger.info("Bot ishga tushdi: @%s", BOT_USERNAME)
-    logger.info("Ishlash rejimi: polling")
-    logger.info("Adminlar: %s", ", ".join(map(str, ADMIN_IDS)))
+    if not RENDER_EXTERNAL_URL:
+        raise RuntimeError(
+            "RENDER_EXTERNAL_URL topilmadi. Render Web Service ishlatayotganingizni tekshiring."
+        )
 
-    bot.infinity_polling(
-        skip_pending=True,
-        timeout=30,
-        long_polling_timeout=30,
+    webhook_url = f"{RENDER_EXTERNAL_URL}{WEBHOOK_PATH}"
+
+    # Eski polling/webhook holatini tozalab, faqat yangi webhookni o‘rnatamiz.
+    bot.remove_webhook()
+    result = bot.set_webhook(
+        url=webhook_url,
         allowed_updates=["message", "callback_query"],
     )
 
+    if not result:
+        raise RuntimeError("Telegram webhook o‘rnatilmadi.")
+
+    info = bot.get_webhook_info()
+    logger.info("Bot ishga tushdi: @%s", BOT_USERNAME)
+    logger.info("Ishlash rejimi: Flask webhook")
+    logger.info("Webhook: %s", info.url)
+    logger.info("Webhook xatosi: %s", info.last_error_message or "yo‘q")
+    logger.info("Adminlar: %s", ", ".join(map(str, ADMIN_IDS)))
+
+
+# Gunicorn `bot:app` yoki `main:app` orqali import qilganda webhook o‘rnatiladi.
+setup_webhook()
+
 
 if __name__ == "__main__":
-    start_polling()
+    port = int(os.getenv("PORT", "10000"))
+    app.run(host="0.0.0.0", port=port)
