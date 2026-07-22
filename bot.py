@@ -2161,7 +2161,7 @@ def start_polling():
     init_db()
 
     # Oldin webhook ishlatilgan bo‘lsa, polling bilan to‘qnashmasligi uchun o‘chiriladi.
-    bot.remove_webhook()
+    
 
     me = bot.get_me()
     BOT_USERNAME = me.username or BOT_USERNAME
