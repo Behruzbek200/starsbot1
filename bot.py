@@ -49,8 +49,8 @@ RENDER_EXTERNAL_URL = os.getenv("RENDER_EXTERNAL_URL", "").strip().rstrip("/")
 WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET", "starsbot2026").strip() or "starsbot2026"
 WEBHOOK_PATH = "/webhook"
 DEFAULT_STAR_PRICE = 198
-DEFAULT_CARD_NUMBER = "9860 0803 9457 0230"
-DEFAULT_CARD_OWNER = "S/MAHMUDOVA"
+DEFAULT_CARD_NUMBER = "5614 6828 1635 1045"
+DEFAULT_CARD_OWNER = "Saporboyev Safarboy"
 
 MIN_TOPUP = 1000
 MAX_TOPUP = 200_000
@@ -155,10 +155,10 @@ def init_db():
                 title TEXT NOT NULL,
                 description TEXT DEFAULT '',
                 price INTEGER NOT NULL,
-                unit_amount INTEGER DEFAULT 1,
-                min_qty INTEGER DEFAULT 1,
+                unit_amount INTEGER DEFAULT 50,
+                min_qty INTEGER DEFAULT 50,
                 max_qty INTEGER DEFAULT 1000000,
-                active INTEGER NOT NULL DEFAULT 1,
+                active INTEGER NOT NULL DEFAULT 50,
                 sort_order INTEGER NOT NULL DEFAULT 0,
                 created_at TEXT NOT NULL
             );
